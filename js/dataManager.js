@@ -63,10 +63,20 @@ const DataManager = {
      * 初始化 - 从 Supabase 加载数据
      */
     async init() {
+        console.log('=== DataManager.init() 开始 ===');
+
         // 先加载本地保存的设置作为备份
         this.loadSettingsFromLocalStorage();
 
         try {
+            console.log('1. 检查 SupabaseClient:', !!window.SupabaseClient);
+
+            if (!window.SupabaseClient) {
+                throw new Error('SupabaseClient 未初始化');
+            }
+
+            console.log('2. 开始并行加载数据...');
+
             // 并行加载所有数据
             const [employeesRes, taskRecordsRes, paymentRecordsRes, settingsRes] = await Promise.all([
                 SupabaseClient.from('employees').select('*').order('create_time', { ascending: false }),
@@ -75,15 +85,37 @@ const DataManager = {
                 SupabaseClient.from('settings').select('*')
             ]);
 
+            console.log('3. 数据库响应:', {
+                employees: { error: employeesRes.error, count: employeesRes.data?.length },
+                taskRecords: { error: taskRecordsRes.error, count: taskRecordsRes.data?.length },
+                paymentRecords: { error: paymentRecordsRes.error, count: paymentRecordsRes.data?.length },
+                settings: { error: settingsRes.error, count: settingsRes.data?.length }
+            });
+
             // 检查错误
-            if (employeesRes.error) throw employeesRes.error;
-            if (taskRecordsRes.error) throw taskRecordsRes.error;
-            if (paymentRecordsRes.error) throw paymentRecordsRes.error;
+            if (employeesRes.error) {
+                console.error('员工数据加载错误:', employeesRes.error);
+                throw employeesRes.error;
+            }
+            if (taskRecordsRes.error) {
+                console.error('任务记录加载错误:', taskRecordsRes.error);
+                throw taskRecordsRes.error;
+            }
+            if (paymentRecordsRes.error) {
+                console.error('付款记录加载错误:', paymentRecordsRes.error);
+                throw paymentRecordsRes.error;
+            }
 
             // 转换数据格式
             this.data.employees = (employeesRes.data || []).map(item => this.fromDbFormat(item));
             this.data.taskRecords = (taskRecordsRes.data || []).map(item => this.fromDbFormat(item));
             this.data.paymentRecords = (paymentRecordsRes.data || []).map(item => this.fromDbFormat(item));
+
+            console.log('4. 数据加载完成:', {
+                employees: this.data.employees.length,
+                taskRecords: this.data.taskRecords.length,
+                paymentRecords: this.data.paymentRecords.length
+            });
 
             // 加载设置
             if (settingsRes.data) {
@@ -92,12 +124,18 @@ const DataManager = {
                 }
             }
 
-            console.log('✓ 数据已从 Supabase 加载');
+            console.log('✓ 数据已从 Supabase 加载成功！');
             return true;
         } catch (error) {
-            console.error('加载数据失败:', error);
+            console.error('=== 加载数据失败 ===');
+            console.error('错误详情:', error);
+            console.error('错误消息:', error.message);
+            console.error('错误代码:', error.code);
+
             // 降级到 localStorage
             this.loadFromLocalStorage();
+            console.log('已降级到 localStorage，本地数据:', this.data);
+
             Utils.showToast('无法连接数据库，已切换到离线模式', 'warning');
             return false;
         }
@@ -154,6 +192,10 @@ const DataManager = {
      * 添加数据
      */
     async add(entity, item) {
+        console.log('=== DataManager.add() 开始 ===');
+        console.log('实体:', entity);
+        console.log('数据:', item);
+
         const tableName = this.tableMap[entity];
         if (!tableName) {
             console.error('未知实体:', entity);
@@ -170,16 +212,28 @@ const DataManager = {
 
         try {
             const dbItem = this.toDbFormat(item);
+            console.log('转换后的数据库格式:', dbItem);
+            console.log('插入到表:', tableName);
+
             const { data, error } = await SupabaseClient
                 .from(tableName)
                 .insert(dbItem)
                 .select()
                 .single();
 
-            if (error) throw error;
+            console.log('插入结果:', { data, error });
+
+            if (error) {
+                console.error('插入错误:', error);
+                console.error('错误代码:', error.code);
+                console.error('错误消息:', error.message);
+                console.error('错误详情:', error.details);
+                throw error;
+            }
 
             const result = this.fromDbFormat(data);
             this.data[entity].unshift(result);
+            console.log('✓ 数据添加成功:', result);
             return result;
         } catch (error) {
             console.error('保存失败:', error);

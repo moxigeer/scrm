@@ -10,6 +10,12 @@ const AuthManager = {
      * 初始化认证状态监听
      */
     async init() {
+        // 检查 SupabaseClient 是否存在
+        if (!window.SupabaseClient) {
+            console.error('SupabaseClient 未初始化，无法进行认证');
+            throw new Error('SupabaseClient is not defined');
+        }
+
         // 监听认证状态变化
         SupabaseClient.auth.onAuthStateChange((event, session) => {
             this.currentUser = session?.user || null;

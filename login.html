@@ -121,7 +121,7 @@
             box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.15);
         }
 
-        .input-wrapper input:focus + i,
+        .input-wrapper input:focus+i,
         .input-wrapper:focus-within i {
             color: #667eea;
         }
@@ -177,7 +177,9 @@
         }
 
         @keyframes spin {
-            to { transform: rotate(360deg); }
+            to {
+                transform: rotate(360deg);
+            }
         }
 
         .error-message {
@@ -260,25 +262,48 @@
     <script src="js/auth.js"></script>
 
     <script>
+        console.log('=== 登录页面脚本开始加载 ===');
+
         document.addEventListener('DOMContentLoaded', async () => {
+            console.log('1. DOMContentLoaded 事件触发');
+
             const form = document.getElementById('login-form');
             const loginBtn = document.getElementById('login-btn');
             const errorMessage = document.getElementById('error-message');
             const errorText = document.getElementById('error-text');
 
+            console.log('2. 获取 DOM 元素:', { form: !!form, loginBtn: !!loginBtn });
+            console.log('3. 检查 Supabase 是否加载:', {
+                supabase: typeof window.supabase,
+                SupabaseClient: typeof window.SupabaseClient,
+                AuthManager: typeof window.AuthManager
+            });
+
             // 检查是否已登录
-            await AuthManager.init();
-            if (AuthManager.isAuthenticated()) {
-                window.location.href = 'index.html';
-                return;
+            try {
+                console.log('4. 开始初始化 AuthManager...');
+                await AuthManager.init();
+                console.log('5. AuthManager 初始化完成, 当前用户:', AuthManager.currentUser);
+
+                if (AuthManager.isAuthenticated()) {
+                    console.log('6. 用户已登录，准备跳转到首页');
+                    window.location.href = 'index.html';
+                    return;
+                }
+                console.log('6. 用户未登录，继续显示登录表单');
+            } catch (initError) {
+                console.error('AuthManager 初始化失败:', initError);
             }
 
             // 登录表单提交
+            console.log('7. 绑定表单提交事件');
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
-                
+                console.log('=== 表单提交事件触发 ===');
+
                 const email = document.getElementById('email').value.trim();
                 const password = document.getElementById('password').value;
+                console.log('8. 获取表单数据:', { email, passwordLength: password.length });
 
                 if (!email || !password) {
                     showError('请输入邮箱和密码');
@@ -286,21 +311,29 @@
                 }
 
                 // 显示加载状态
+                console.log('9. 显示加载状态...');
                 loginBtn.classList.add('loading');
                 loginBtn.disabled = true;
                 hideError();
 
                 try {
-                    await AuthManager.login(email, password);
+                    console.log('10. 调用 AuthManager.login...');
+                    const user = await AuthManager.login(email, password);
+                    console.log('11. 登录成功! 用户:', user);
+                    console.log('12. 准备跳转到首页...');
                     window.location.href = 'index.html';
                 } catch (error) {
                     console.error('登录失败:', error);
+                    console.log('错误信息:', error.message);
                     showError(getErrorMessage(error.message));
                 } finally {
+                    console.log('13. 恢复按钮状态');
                     loginBtn.classList.remove('loading');
                     loginBtn.disabled = false;
                 }
             });
+
+            console.log('=== 登录页面初始化完成 ===');
 
             function showError(message) {
                 errorText.textContent = message;
