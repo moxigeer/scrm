@@ -63,19 +63,13 @@ const DataManager = {
      * 初始化 - 从 Supabase 加载数据
      */
     async init() {
-        console.log('=== DataManager.init() 开始 ===');
-
         // 先加载本地保存的设置作为备份
         this.loadSettingsFromLocalStorage();
 
         try {
-            console.log('1. 检查 SupabaseClient:', !!window.SupabaseClient);
-
             if (!window.SupabaseClient) {
                 throw new Error('SupabaseClient 未初始化');
             }
-
-            console.log('2. 开始并行加载数据...');
 
             // 并行加载所有数据
             const [employeesRes, taskRecordsRes, paymentRecordsRes, settingsRes] = await Promise.all([
@@ -85,37 +79,15 @@ const DataManager = {
                 SupabaseClient.from('settings').select('*')
             ]);
 
-            console.log('3. 数据库响应:', {
-                employees: { error: employeesRes.error, count: employeesRes.data?.length },
-                taskRecords: { error: taskRecordsRes.error, count: taskRecordsRes.data?.length },
-                paymentRecords: { error: paymentRecordsRes.error, count: paymentRecordsRes.data?.length },
-                settings: { error: settingsRes.error, count: settingsRes.data?.length }
-            });
-
             // 检查错误
-            if (employeesRes.error) {
-                console.error('员工数据加载错误:', employeesRes.error);
-                throw employeesRes.error;
-            }
-            if (taskRecordsRes.error) {
-                console.error('任务记录加载错误:', taskRecordsRes.error);
-                throw taskRecordsRes.error;
-            }
-            if (paymentRecordsRes.error) {
-                console.error('付款记录加载错误:', paymentRecordsRes.error);
-                throw paymentRecordsRes.error;
-            }
+            if (employeesRes.error) throw employeesRes.error;
+            if (taskRecordsRes.error) throw taskRecordsRes.error;
+            if (paymentRecordsRes.error) throw paymentRecordsRes.error;
 
             // 转换数据格式
             this.data.employees = (employeesRes.data || []).map(item => this.fromDbFormat(item));
             this.data.taskRecords = (taskRecordsRes.data || []).map(item => this.fromDbFormat(item));
             this.data.paymentRecords = (paymentRecordsRes.data || []).map(item => this.fromDbFormat(item));
-
-            console.log('4. 数据加载完成:', {
-                employees: this.data.employees.length,
-                taskRecords: this.data.taskRecords.length,
-                paymentRecords: this.data.paymentRecords.length
-            });
 
             // 加载设置
             if (settingsRes.data) {
@@ -124,19 +96,14 @@ const DataManager = {
                 }
             }
 
-            console.log('✓ 数据已从 Supabase 加载成功！');
+            // 同时保存到本地作为缓存
+            this.saveToLocalStorage();
             return true;
         } catch (error) {
-            console.error('=== 加载数据失败 ===');
-            console.error('错误详情:', error);
-            console.error('错误消息:', error.message);
-            console.error('错误代码:', error.code);
-
+            console.error('加载数据失败:', error.message);
             // 降级到 localStorage
             this.loadFromLocalStorage();
-            console.log('已降级到 localStorage，本地数据:', this.data);
-
-            Utils.showToast('无法连接数据库，已切换到离线模式', 'warning');
+            Utils.showToast('网络较慢，使用本地缓存', 'warning');
             return false;
         }
     },
@@ -189,63 +156,59 @@ const DataManager = {
     },
 
     /**
-     * 添加数据
+     * 添加数据（乐观更新：先更新界面，后台同步数据库）
      */
     async add(entity, item) {
-        console.log('=== DataManager.add() 开始 ===');
-        console.log('实体:', entity);
-        console.log('数据:', item);
-
         const tableName = this.tableMap[entity];
-        if (!tableName) {
-            console.error('未知实体:', entity);
-            return null;
-        }
+        if (!tableName) return null;
 
         // 生成 ID 和创建时间
-        if (!item.id) {
-            item.id = this.generateId();
-        }
-        if (!item.createTime) {
-            item.createTime = new Date().toISOString();
-        }
+        if (!item.id) item.id = this.generateId();
+        if (!item.createTime) item.createTime = new Date().toISOString();
 
+        // 乐观更新：立即添加到本地数据
+        this.data[entity].unshift(item);
+        this.saveToLocalStorage();
+
+        // 后台异步同步到数据库（不阻塞界面）
+        this.syncToDatabase('insert', tableName, item).catch(err => {
+            console.error('后台同步失败:', err.message);
+        });
+
+        return item;
+    },
+
+    /**
+     * 后台同步到数据库
+     */
+    async syncToDatabase(action, tableName, item, id = null) {
         try {
             const dbItem = this.toDbFormat(item);
-            console.log('转换后的数据库格式:', dbItem);
-            console.log('插入到表:', tableName);
+            let result;
 
-            const { data, error } = await SupabaseClient
-                .from(tableName)
-                .insert(dbItem)
-                .select()
-                .single();
-
-            console.log('插入结果:', { data, error });
-
-            if (error) {
-                console.error('插入错误:', error);
-                console.error('错误代码:', error.code);
-                console.error('错误消息:', error.message);
-                console.error('错误详情:', error.details);
-                throw error;
+            switch (action) {
+                case 'insert':
+                    result = await SupabaseClient.from(tableName).insert(dbItem);
+                    break;
+                case 'update':
+                    result = await SupabaseClient.from(tableName).update(dbItem).eq('id', id);
+                    break;
+                case 'delete':
+                    result = await SupabaseClient.from(tableName).delete().eq('id', id);
+                    break;
             }
 
-            const result = this.fromDbFormat(data);
-            this.data[entity].unshift(result);
-            console.log('✓ 数据添加成功:', result);
-            return result;
+            if (result?.error) {
+                throw result.error;
+            }
         } catch (error) {
-            console.error('保存失败:', error);
-            // 降级到本地
-            this.data[entity].unshift(item);
-            this.saveToLocalStorage();
-            return item;
+            // 同步失败时，数据已在本地保存，下次刷新会重试
+            console.error(`数据库${action}失败:`, error.message);
         }
     },
 
     /**
-     * 更新数据
+     * 更新数据（乐观更新）
      */
     async update(entity, id, updates) {
         const tableName = this.tableMap[entity];
@@ -254,47 +217,34 @@ const DataManager = {
 
         const updated = { ...this.data[entity][index], ...updates };
 
-        try {
-            const dbUpdates = this.toDbFormat(updates);
-            const { error } = await SupabaseClient
-                .from(tableName)
-                .update(dbUpdates)
-                .eq('id', id);
+        // 乐观更新：立即更新本地数据
+        this.data[entity][index] = updated;
+        this.saveToLocalStorage();
 
-            if (error) throw error;
+        // 后台异步同步
+        this.syncToDatabase('update', tableName, updates, id).catch(err => {
+            console.error('更新同步失败:', err.message);
+        });
 
-            this.data[entity][index] = updated;
-            return updated;
-        } catch (error) {
-            console.error('更新失败:', error);
-            this.data[entity][index] = updated;
-            this.saveToLocalStorage();
-            return updated;
-        }
+        return updated;
     },
 
     /**
-     * 删除数据
+     * 删除数据（乐观更新）
      */
     async delete(entity, id) {
         const tableName = this.tableMap[entity];
 
-        try {
-            const { error } = await SupabaseClient
-                .from(tableName)
-                .delete()
-                .eq('id', id);
+        // 乐观更新：立即从本地删除
+        this.data[entity] = this.data[entity].filter(item => item.id !== id);
+        this.saveToLocalStorage();
 
-            if (error) throw error;
+        // 后台异步同步
+        this.syncToDatabase('delete', tableName, null, id).catch(err => {
+            console.error('删除同步失败:', err.message);
+        });
 
-            this.data[entity] = this.data[entity].filter(item => item.id !== id);
-            return true;
-        } catch (error) {
-            console.error('删除失败:', error);
-            this.data[entity] = this.data[entity].filter(item => item.id !== id);
-            this.saveToLocalStorage();
-            return true;
-        }
+        return true;
     },
 
     /**
