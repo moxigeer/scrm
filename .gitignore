@@ -1,0 +1,28 @@
+# 依赖和缓存
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# 构建产物
+*.exe
+dist/
+build/
+
+# 本地配置和数据
+*.xlsx
+*.json
+!package.json
+!package-lock.json
+
+# IDE
+.vscode/
+.idea/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.log
+*.tmp

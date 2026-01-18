@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRM 客户管理系统</title>
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/datacenter.css">
+    <!-- Remix Icon (本地) -->
+    <link rel="stylesheet" href="lib/remixicon/remixicon.css">
+    <style>
+        /* 用户区域样式 */
+        .user-section {
+            margin-top: auto;
+            padding: 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .user-avatar {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .user-avatar i {
+            font-size: 18px;
+            color: white;
+        }
+
+        .user-details {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .user-email {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: block;
+        }
+
+        .logout-btn {
+            width: 36px;
+            height: 36px;
+            background: rgba(239, 68, 68, 0.15);
+            border: none;
+            border-radius: 10px;
+            color: #ef4444;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .logout-btn:hover {
+            background: rgba(239, 68, 68, 0.25);
+        }
+
+        .logout-btn i {
+            font-size: 18px;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- 侧边导航栏 -->
+        <aside class="sidebar">
+            <div class="logo">
+                <h1>逐米时代</h1>
+            </div>
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active" data-page="dashboard">
+                    <i class="ri-dashboard-3-line"></i>
+                    <span class="text">首页</span>
+                </a>
+                <a href="#" class="nav-item" data-page="employees">
+                    <i class="ri-team-line"></i>
+                    <span class="text">员工管理</span>
+                </a>
+                <a href="#" class="nav-item" data-page="tasks">
+                    <i class="ri-clipboard-line"></i>
+                    <span class="text">任务记录</span>
+                </a>
+                <a href="#" class="nav-item" data-page="payments">
+                    <i class="ri-money-cny-circle-line"></i>
+                    <span class="text">回款记录</span>
+                </a>
+                <a href="#" class="nav-item nav-item-secret" data-page="ai-assistant" style="display: none;">
+                    <i class="ri-robot-2-line"></i>
+                    <span class="text">AI智能助理</span>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- 主内容区域 -->
+        <main class="main-content">
+
+
+            <!-- 页面内容容器 -->
+            <div id="page-content" class="page-content">
+                <!-- 动态加载的页面内容 -->
+            </div>
+        </main>
+    </div>
+
+    <!-- 模态框容器 -->
+    <div id="modal-container"></div>
+
+    <!-- 提示框容器 -->
+    <div id="toast-container"></div>
+
+    <!-- 加载指示器 -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- 引入第三方库 (本地) -->
+    <script src="lib/xlsx.full.min.js"></script>
+    <script src="lib/chart.min.js"></script>
+    <script src="lib/chartjs-plugin-datalabels.min.js"></script>
+    <script src="lib/marked.min.js"></script>
+
+    <!-- 引入应用模块 -->
+    <script src="js/utils.js"></script>
+    <script src="js/supabase.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/dataManager.js"></script>
+    <script src="js/modules/dashboard.js"></script>
+    <script src="js/modules/employees.js"></script>
+    <script src="js/modules/taskRecords.js"></script>
+    <script src="js/modules/payments.js"></script>
+    <script src="js/modules/aiAssistant.js"></script>
+
+    <script src="js/app.js"></script>
+
+    <!-- 秘密解锁脚本 -->
+    <script>
+        (function () {
+            const secretCode = 'jdthzz';
+            let inputBuffer = '';
+            let lastKeyTime = 0;
+
+            // 检查是否已解锁（当前会话）
+            if (sessionStorage.getItem('ai_unlocked') === 'true') {
+                const secretItem = document.querySelector('.nav-item-secret');
+                if (secretItem) secretItem.style.display = '';
+            }
+
+            document.addEventListener('keydown', function (e) {
+                const now = Date.now();
+                // 如果超过2秒没按键，重置缓冲区
+                if (now - lastKeyTime > 2000) {
+                    inputBuffer = '';
+                }
+                lastKeyTime = now;
+
+                // 忽略功能键和输入框中的输入
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+                inputBuffer += e.key.toLowerCase();
+
+                // 只保留最近的字符
+                if (inputBuffer.length > secretCode.length) {
+                    inputBuffer = inputBuffer.slice(-secretCode.length);
+                }
+
+                // 检查是否匹配秘密代码
+                if (inputBuffer === secretCode) {
+                    const secretItem = document.querySelector('.nav-item-secret');
+                    if (secretItem) {
+                        secretItem.style.display = '';
+                        sessionStorage.setItem('ai_unlocked', 'true');
+
+                        // 显示解锁动画
+                        secretItem.style.animation = 'unlockPulse 0.6s ease';
+                        Utils.showToast('🤖 AI智能助理已解锁！', 'success');
+                    }
+                    inputBuffer = '';
+                }
+            });
+        })();
+    </script>
+</body>
+
+</html>
